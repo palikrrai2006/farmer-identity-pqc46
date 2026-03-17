@@ -1,6 +1,6 @@
-from cryptography.kyber import KyberKEM
-from cryptography.dilithium import DilithiumSignature
-from cryptography.aes import AESEncryption
+from pqc.kyber import KyberKEM
+from pqc.dilithium import DilithiumSignature
+from pqc.aes import AESEncryption
 
 print("Testing cryptography modules...")
 
