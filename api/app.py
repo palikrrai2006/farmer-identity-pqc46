@@ -5,17 +5,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask, request, jsonify
 from pqc import AESEncryption, KyberKEM, DilithiumSignature
 from database.models import db, Farmer
+from ipfs.ipfs_client import IPFSClient
 
 app = Flask(__name__)
 
-# SQLite config
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///farmers.db'
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{BASE_DIR}/farmers.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
-# Create tables on startup
 with app.app_context():
     db.create_all()
+
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -32,7 +33,6 @@ def register_farmer():
     farmer_id = data['farmer_id']
     biometric = data['biometric'].encode()
 
-    # Check duplicate
     if Farmer.query.filter_by(farmer_id=farmer_id).first():
         return jsonify({"error": "Farmer already registered"}), 409
 
@@ -55,7 +55,18 @@ def register_farmer():
     record_bytes = f"{farmer_id}:{bio_hash}".encode()
     signature = dil.sign(record_bytes, dil_keys['secret_key'])
 
-    # Step 5: Save to DB
+    # Step 5: Upload encrypted data to IPFS
+    ipfs = IPFSClient()
+    ipfs_data = {
+        "farmer_id": farmer_id,
+        "bio_hash": bio_hash,
+        "encrypted_bio": encrypted['ciphertext'].hex(),
+        "nonce": encrypted['nonce'].hex(),
+        "kyber_ciphertext": encap['ciphertext'].hex()
+    }
+    cid = ipfs.upload(ipfs_data)
+
+    # Step 6: Save to DB with CID
     farmer = Farmer(
         farmer_id=farmer_id,
         bio_hash=bio_hash,
@@ -65,6 +76,7 @@ def register_farmer():
         kyber_public_key=kyber_keys['public_key'].hex(),
         dil_public_key=dil_keys['public_key'].hex(),
         signature=signature.hex(),
+        ipfs_cid=cid,
         status='enrolled'
     )
     db.session.add(farmer)
@@ -74,6 +86,7 @@ def register_farmer():
         "message": "Farmer enrolled successfully",
         "farmer_id": farmer_id,
         "bio_hash": bio_hash,
+        "ipfs_cid": cid,
         "status": "enrolled"
     }), 201
 
@@ -98,6 +111,7 @@ def verify_farmer():
         return jsonify({
             "message": "Farmer verified successfully",
             "farmer_id": farmer_id,
+            "ipfs_cid": farmer.ipfs_cid,
             "status": "verified"
         }), 200
     else:
