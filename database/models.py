@@ -14,7 +14,8 @@ class Farmer(db.Model):
     kyber_public_key = db.Column(db.Text, nullable=False)
     dil_public_key   = db.Column(db.Text, nullable=False)
     signature        = db.Column(db.Text, nullable=False)
-    ipfs_cid         = db.Column(db.String(100), nullable=True)   # ← NEW
+    ipfs_cid         = db.Column(db.String(100), nullable=True)
+    tx_hash          = db.Column(db.String(100), nullable=True)
     status           = db.Column(db.String(20), default='enrolled')
 
     def to_dict(self):
@@ -22,5 +23,6 @@ class Farmer(db.Model):
             "farmer_id": self.farmer_id,
             "bio_hash":  self.bio_hash,
             "ipfs_cid":  self.ipfs_cid,
+            "tx_hash":   self.tx_hash,
             "status":    self.status
         }

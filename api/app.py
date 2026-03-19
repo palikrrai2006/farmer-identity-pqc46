@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify
 from pqc import AESEncryption, KyberKEM, DilithiumSignature
 from database.models import db, Farmer
 from ipfs.ipfs_client import IPFSClient
+from blockchain.contract import FarmerContract
 
 app = Flask(__name__)
 
@@ -39,7 +40,7 @@ def register_farmer():
     # Step 1: SHA3-256 hash
     bio_hash = AESEncryption.hash_sha3_256(biometric)
 
-    # Step 2: Kyber KEM → shared secret
+    # Step 2: Kyber KEM -> shared secret
     kyber = KyberKEM()
     kyber_keys = kyber.generate_keypair()
     encap = kyber.encapsulate(kyber_keys['public_key'])
@@ -66,7 +67,11 @@ def register_farmer():
     }
     cid = ipfs.upload(ipfs_data)
 
-    # Step 6: Save to DB with CID
+    # Step 6: Store CID on blockchain
+    bc = FarmerContract()
+    tx_hash = bc.register_farmer(farmer_id, bio_hash, cid)
+
+    # Step 7: Save everything to DB
     farmer = Farmer(
         farmer_id=farmer_id,
         bio_hash=bio_hash,
@@ -77,6 +82,7 @@ def register_farmer():
         dil_public_key=dil_keys['public_key'].hex(),
         signature=signature.hex(),
         ipfs_cid=cid,
+        tx_hash=tx_hash,
         status='enrolled'
     )
     db.session.add(farmer)
@@ -87,6 +93,7 @@ def register_farmer():
         "farmer_id": farmer_id,
         "bio_hash": bio_hash,
         "ipfs_cid": cid,
+        "tx_hash": tx_hash,
         "status": "enrolled"
     }), 201
 
@@ -108,10 +115,14 @@ def verify_farmer():
     incoming_hash = AESEncryption.hash_sha3_256(biometric)
 
     if incoming_hash == farmer.bio_hash:
+        bc = FarmerContract()
+        bc_farmer = bc.get_farmer(farmer_id)
         return jsonify({
             "message": "Farmer verified successfully",
             "farmer_id": farmer_id,
             "ipfs_cid": farmer.ipfs_cid,
+            "tx_hash": farmer.tx_hash,
+            "blockchain_cid": bc_farmer['ipfs_cid'],
             "status": "verified"
         }), 200
     else:
